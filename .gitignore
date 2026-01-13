@@ -150,3 +150,8 @@ skyseg.onnx
 
 # Model
 model.pt
+
+# output
+*.glb
+*.png
+*.npz
