@@ -29,11 +29,14 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 print("Initializing and loading VGGT model...")
 # model = VGGT.from_pretrained("facebook/VGGT-1B")  # another way to load the model
 
+device = "cuda" if torch.cuda.is_available() else "cpu"
+# bfloat16 is supported on Ampere GPUs (Compute Capability 8.0+) 
+dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else torch.float16
+checkpoint_path = "./model.pt"
+state_dict = torch.load(checkpoint_path)
 model = VGGT()
-_URL = "https://huggingface.co/facebook/VGGT-1B/resolve/main/model.pt"
-model.load_state_dict(torch.hub.load_state_dict_from_url(_URL))
-
-
+model.load_state_dict(state_dict)
+model = model.to(dtype=dtype)
 model.eval()
 model = model.to(device)
 
@@ -70,9 +73,23 @@ def run_model(target_dir, model) -> dict:
     print("Running inference...")
     dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else torch.float16
 
+    # --- ⏱️ START INFERENCE TIMER ---
+    # We must synchronize to ensure all previous CUDA work is done
+    torch.cuda.synchronize()
+    start_time = time.time()
+    # --------------------------------
+
     with torch.no_grad():
         with torch.cuda.amp.autocast(dtype=dtype):
             predictions = model(images)
+
+    # --- ⏱️ END INFERENCE TIMER ---
+    # We must synchronize again to wait for the model() call to finish
+    torch.cuda.synchronize()
+    end_time = time.time()
+    inference_time = end_time - start_time
+    print(f"🔥🔥🔥 Model Inference ONLY took: {inference_time:.4f} seconds 🔥🔥🔥")
+    # --------------------------------
 
     # Convert pose encoding to extrinsic and intrinsic matrices
     print("Converting pose encoding to extrinsic and intrinsic matrices...")
@@ -80,10 +97,10 @@ def run_model(target_dir, model) -> dict:
     predictions["extrinsic"] = extrinsic
     predictions["intrinsic"] = intrinsic
 
-    # Convert tensors to numpy
+    # Convert tensors to numpy (This part is now timed separately)
     for key in predictions.keys():
         if isinstance(predictions[key], torch.Tensor):
-            predictions[key] = predictions[key].cpu().numpy().squeeze(0)  # remove batch dimension
+            predictions[key] = predictions[key].float().cpu().numpy().squeeze(0)
     predictions['pose_enc_list'] = None # remove pose_enc_list
 
     # Generate world points from depth map
