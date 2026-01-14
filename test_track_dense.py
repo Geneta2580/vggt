@@ -50,10 +50,21 @@ if len(image_names) == 0:
 print(f"Found {len(image_names)} images in folder: {image_folder}")
 print(f"Image files: {[os.path.basename(name) for name in image_names]}")
 
+# 读取图像到列表中
+print("\nReading images from disk...")
+read_start_time = time.time()
+image_list = []
+for img_path in image_names:
+    # 使用 PIL Image 读取图像
+    img = Image.open(img_path)
+    image_list.append(img)
+read_time = time.time() - read_start_time
+print(f"Image reading time: {read_time:.3f}s")
+
 # 加载图像并获取坐标转换对象（使用双向映射）
 print("\nLoading and preprocessing images...")
 load_start_time = time.time()
-images, transforms = load_and_preprocess_images(image_names, mode="crop", return_transforms=True)
+images, transforms = load_and_preprocess_images(image_list, mode="crop", return_transforms=True)
 load_time = time.time() - load_start_time
 print(f"Image loading time: {load_time:.3f}s")
 

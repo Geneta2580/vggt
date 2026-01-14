@@ -8,6 +8,7 @@ import torch
 from PIL import Image
 from torchvision import transforms as TF
 import numpy as np
+import cv2
 from dataclasses import dataclass
 from typing import Optional, List, Tuple
 
@@ -181,13 +182,13 @@ class CoordinateTransform:
         return coords
 
 
-def load_and_preprocess_images(image_path_list, mode="crop", return_transforms=False):
+def load_and_preprocess_images(image_input_list, mode="crop", return_transforms=False):
     """
     A quick start function to load and preprocess images for model input.
     This assumes the images should have the same shape for easier batching, but our model can also work well with different shapes.
 
     Args:
-        image_path_list (list): List of paths to image files
+        image_input_list (list): List of paths to image files or (path, timestamp) tuples
         mode (str, optional): Preprocessing mode, either "crop" or "pad".
                              - "crop" (default): Sets width to 518px and center crops height if needed.
                              - "pad": Preserves all pixels by making the largest dimension 518px
@@ -213,7 +214,7 @@ def load_and_preprocess_images(image_path_list, mode="crop", return_transforms=F
         - Dimensions are adjusted to be divisible by 14 for compatibility with model requirements
     """
     # Check for empty list
-    if len(image_path_list) == 0:
+    if len(image_input_list) == 0:
         raise ValueError("At least 1 image is required")
 
     # Validate mode
@@ -227,10 +228,19 @@ def load_and_preprocess_images(image_path_list, mode="crop", return_transforms=F
     target_size = 518
 
     # First process all images and collect their shapes
-    for image_path in image_path_list:
-        # Open image
-        img = Image.open(image_path)
-
+    for item in image_input_list:
+        if isinstance(item, str):
+            img = Image.open(item)
+        elif isinstance(item, np.ndarray):
+            # 如果是 Numpy 数组 (通常来自 OpenCV, 格式为 BGR)
+            # 需要转换为 RGB 格式并转为 PIL Image
+            img = Image.fromarray(cv2.cvtColor(item, cv2.COLOR_BGR2RGB))
+        elif isinstance(item, Image.Image):
+            # 如果已经是 PIL Image，直接使用
+            img = item        
+        else:
+            raise ValueError(f"Unsupported image input type: {type(item)}")
+        
         # If there's an alpha channel, blend onto white background:
         if img.mode == "RGBA":
             # Create white background
@@ -341,7 +351,7 @@ def load_and_preprocess_images(image_path_list, mode="crop", return_transforms=F
     images = torch.stack(images)  # concatenate images
 
     # Ensure correct shape when single image
-    if len(image_path_list) == 1:
+    if len(image_input_list) == 1:
         # Verify shape is (1, C, H, W)
         if images.dim() == 3:
             images = images.unsqueeze(0)
